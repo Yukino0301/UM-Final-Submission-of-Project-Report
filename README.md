@@ -1,105 +1,76 @@
-  <h1> 🏃🫨 MAD-Avatar: Motion-Aware Animatable Gaussian Avatars Deblurring </h1>
-<div>
-    <a href='https://myniuuu.github.io/' target='_blank'>Muyao Niu</a> <sup>1,2</sup> &nbsp;
-    <a href='https://yifever20002.github.io/' target='_blank'>Yifan Zhan</a><sup>1,2</sup> &nbsp;
-    <a href='https://qtzhu.me/' target='_blank'>Qingtian Zhu</a><sup>2</sup> &nbsp;
-    Zhuoxiao Li<sup>2</sup> &nbsp;
-    Wei Wang<sup>1</sup> &nbsp;<br>
-    <a href='https://zzh-tech.github.io/' target='_blank'>Zhihang Zhong</a><sup>1,†</sup> &nbsp;
-    <a href='https://jimmysuen.github.io/' target='_blank'>Xiao Sun</a><sup>1,†</sup> &nbsp;
-    <a href='https://scholar.google.com/citations?user=JD-5DKcAAAAJ&hl=en' target='_blank'>Yinqiang Zheng</a><sup>2</sup> &nbsp;
-</div>
-<div>
-    <sup>1</sup>Shanghai Artificial Intelligence Laboratory &nbsp; <sup>2</sup>The University of Tokyo
-</div>
-<div>
-    <sup>†</sup>Corresponding Authors &nbsp; 
-</div>
+# Rolling-Shutter-Aware Observation Modeling for 3D Gaussian Human Avatars
 
-<br>
+This repository contains the implementation and data-processing pipeline for **rolling-shutter-aware observation modeling** in 3D Gaussian human avatar reconstruction.
 
-<a href='https://arxiv.org/abs/2411.16758'><img src='https://img.shields.io/badge/ArXiv-PDF-red'></a>
+The project is built on top of Gaussian-avatar-based dynamic human reconstruction and extends the observation model from a **global-shutter (GS)** assumption to a **rolling-shutter (RS)** setting. The key idea is simple: keep the original avatar representation, motion prior, and optimization structure, and modify only the image formation process so that training observations better match the row-dependent timing of RS cameras.
 
+> **Current project scope**
+>
+> This repository currently supports:
+> - rolling-shutter data synthesis from sharp ZJU-MoCap sequences,
+> - RS-aware training integration for Gaussian human avatars,
+> - benchmark construction and dataset-level quantitative analysis.
+>
+> At this stage, the released quantitative tables primarily compare `blur11` and `rs11` against the sharp center reference. A complete end-to-end rendered-avatar-versus-ground-truth reconstruction benchmark is left for future work.
 
 ---
 
-Stay tuned. Feel free to contact me for bugs or missing files.
+## Overview
 
+Dynamic human avatar reconstruction methods often assume either:
+1. sharp observations, or
+2. blur that can still be explained under a GS image formation model.
 
-## Setup Procedures
+This assumption breaks under rolling shutter. In RS cameras, different image rows are captured at different times. Under fast articulated human motion, this causes not only motion blur, but also **row-dependent geometric distortion**.
 
-### Python Environment
+This repository studies that mismatch directly by replacing the original frame-wise GS observation with a **row-conditioned RS observation model** while preserving:
+- Gaussian avatar representation,
+- SMPL-based motion prior,
+- spline-based motion modeling,
+- original optimization losses.
 
-```
-conda create -n baga python==3.8 -y
-conda activate baga
-conda install pytorch==2.0.0 torchvision==0.15.0 torchaudio==2.0.0 pytorch-cuda=11.8 -c pytorch -c nvidia
-pip install submodules/diff-gaussian-rasterization/
-pip install submodules/simple-knn/
-pip install --upgrade https://github.com/unlimblue/KNN_CUDA/releases/download/0.2/KNN_CUDA-0.2-py3-none-any.whl
-pip install -r requirement.txt
-```
+---
 
-### SMPL files
+## What is included
 
-Register and download SMPL models [here](https://smplify.is.tue.mpg.de/login.php) and put the downloaded models into the folder `assets`. Only the neutral one is needed. The folder structure should look like
+### 1. RS-aware observation formulation
+The framework keeps the original dynamic avatar representation and modifies only the observation model:
+- GS: frame-wise temporal averaging
+- RS: row-conditioned composition according to row-dependent sampling times
 
-```
-./
-└── assets/
-    ├── SMPL_NEUTRAL.pkl
-```
+### 2. Rolling-shutter synthesis pipeline
+A controlled RS benchmark is constructed from **ZJU-MoCap** sharp sequences:
+- sharp RGB sequences are used as source data,
+- human masks are read together with RGB frames,
+- different rows are assigned different sampling times within a readout window,
+- optional row exposure integration is supported,
+- center-time SMPL parameters and vertices are preserved for compatibility with the original pipeline.
 
-### Dataset
+### 3. Training integration
+The synthesized RS dataset is aligned with the original blur-format directory structure so that downstream training code requires only minimal modification.
 
-We contribute synthetic and real datasets for evaluating blur-aware 3DGS human avatar synthesis techniques. 
+### 4. Dataset-level quantitative analysis
+Current results show that rolling shutter changes the **spatial error profile** rather than acting as a uniform degradation:
+- compared with `blur11`, `rs11` yields lower mean PSNR,
+- but also lower foreground MAE,
+- and the effect varies across scenes.
 
-#### Synthetic Dataset
-For the synthetic dataset, due to the [aggreement](https://pengsida.net/project_page_assets/files/ZJU-MoCap_Agreement.pdf) of ZJU-MoCap, we cannot re-distribute the sharp data of ZJU-MoCap. So you have to download the original dataset, and follow the following steps to construct the final synthetic dataset using our scripts:
+---
 
-1. Download the blurry frames and the calibrations from [here](https://drive.google.com/file/d/1ZLVpE-9zIobaY41-6bEsVXUEyILCycxw/view?usp=sharing) and unzip it to `./data/BlurZJU`.
-2. Follow the procedure [here](https://github.com/zju3dv/neuralbody/blob/master/INSTALL.md) to download ZJU-MoCap (refined version). Unzip and put the six scenes (`my_377`, `my_386`, `my_387`, `my_392`, `my_393`, `my_394`) to `./data/ZJU-MoCap-Refine` (If you get scenes starting with `CoreView` instead of `my`, then you have downloaded the original ZJU-MoCap, not the Refined version).
-3. Run `python rearrange_zju.py` to re-arrange the dataset.
-4. To synthesize a rolling-shutter-aware training set from the rearranged sharp frames, run:
+## Repository structure
 
-```
-python synthesize_rolling_shutter.py \
-  --source-root ./data/BlurZJU/sharp \
-  --target-root ./data/BlurZJU/rs11 \
-  --readout-frames 11 \
-  --pose-num 50 \
-  --views 04 10 16 22
-```
-
-This creates `./data/BlurZJU/rs11/<scene>` with the same training-facing layout as `blur11`, while keeping the original `sharp` data unchanged for supervision and evaluation.
-
-#### Real Dataset (BS-Human)
-
-Download the real dataset from this [link](https://drive.google.com/file/d/1FXFILsI3WjxVL5ercZUHnSatL9dAbEib/view?usp=sharing) and unzip them to the `./data` directory.
-
-## Training
-
-### Synthetic dataset
-
-```
-chmod 777 train_BlurZJU.sh
-bash train_BlurZJU.sh
-```
-
-### Synthetic rolling-shutter dataset
-
-```
-chmod 777 train_RSZJU.sh
-bash train_RSZJU.sh
-```
-
-### Real dataset
-
-```
-chmod 777 train_BSHuman.sh
-bash train_BSHuman.sh
-```
-
-## Acknowledgments
-
-We appreciate [gaussian-splatting](https://github.com/graphdeco-inria/gaussian-splatting), [GauHuman](https://github.com/skhu101/GauHuman), and [GSM](https://github.com/computational-imaging/GSM) for their wonderful work and code implementation. We would also like to deeply express our gratitude to the release of [NeuralBody](https://github.com/zju3dv/neuralbody) (as well as the ZJU-MoCap dataset) and [EasyMocap](https://github.com/zju3dv/EasyMocap) which we use to calibrate our dataset. 
+```text
+.
+├── assets/                      # SMPL files
+├── data/
+│   ├── BlurZJU/
+│   │   ├── sharp/               # rearranged sharp sequences
+│   │   ├── blur11/              # original blur benchmark
+│   │   └── rs11/                # synthesized rolling-shutter benchmark
+│   └── ...
+├── synthesize_rolling_shutter.py
+├── train.py
+├── train_BlurZJU.sh
+├── train_RSZJU.sh
+├── train_BSHuman.sh
+└── README.md
